@@ -40,7 +40,13 @@ const KanbanBoard = ({ tickets, onStatusChange, onTicketClick }) => {
                                 initial={{ opacity: 0, y: 20 }}
                                 animate={{ opacity: 1, y: 0 }}
                                 transition={{ duration: 0.3 }}
-                                className={`bg-gray-50/50 backdrop-blur-sm rounded-xl p-4 min-h-[500px] border border-gray-200/60 shadow-inner flex flex-col ${col.color} ${snapshot.isDraggingOver ? 'bg-blue-50/50 ring-2 ring-blue-100' : ''} transition-colors`}
+                                className={`
+                    bg-gray-50/50 backdrop-blur-sm rounded-xl p-4 min-h-[500px] 
+                    border border-gray-200/60 shadow-inner flex flex-col 
+                    transition-all duration-200 ease-in-out
+                    ${col.color} 
+                    ${snapshot.isDraggingOver ? 'bg-blue-50/80 ring-2 ring-blue-200 shadow-lg scale-[1.01]' : ''}
+                `}
                                 ref={provided.innerRef}
                                 {...provided.droppableProps}
                             >
@@ -59,7 +65,10 @@ const KanbanBoard = ({ tickets, onStatusChange, onTicketClick }) => {
                                                     ref={provided.innerRef}
                                                     {...provided.draggableProps}
                                                     {...provided.dragHandleProps}
-                                                    style={provided.draggableProps.style}
+                                                    style={{
+                                                        ...provided.draggableProps.style,
+                                                        opacity: snapshot.isDragging ? 0.9 : 1,
+                                                    }}
                                                 >
                                                     <TicketCard
                                                         ticket={ticket}
@@ -71,6 +80,12 @@ const KanbanBoard = ({ tickets, onStatusChange, onTicketClick }) => {
                                         </Draggable>
                                     ))}
                                     {provided.placeholder}
+                                    {/* Visual cue for empty column */}
+                                    {getTicketsByStatus(status).length === 0 && !snapshot.isDraggingOver && (
+                                        <div className="h-full flex items-center justify-center border-2 border-dashed border-gray-200 rounded-lg p-6 opacity-50">
+                                            <span className="text-sm text-gray-400">Arrastra aquí</span>
+                                        </div>
+                                    )}
                                 </div>
                             </motion.div>
                         )}

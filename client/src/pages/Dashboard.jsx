@@ -1,9 +1,11 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { motion, AnimatePresence } from 'framer-motion';
 import { toast } from 'react-hot-toast';
+import { io } from 'socket.io-client';
 import KanbanBoard from '../components/KanbanBoard';
 
 const API_URL = '/api/tickets';
+const SOCKET_URL = import.meta.env.PROD ? '' : 'http://localhost:5000';
 
 function Dashboard() {
     const [tickets, setTickets] = useState([]);
@@ -11,16 +13,47 @@ function Dashboard() {
     const [loading, setLoading] = useState(false);
     const [selectedTicket, setSelectedTicket] = useState(null);
     const [commentText, setCommentText] = useState('');
-    const [viewMode, setViewMode] = useState('list'); // 'list' or 'board'
+    const [viewMode, setViewMode] = useState('list');
 
     const user = JSON.parse(localStorage.getItem('user'));
     const isAdmin = user?.role === 'admin';
+    const socketRef = useRef(null);
+
+    // --- Socket.io Setup ---
+    useEffect(() => {
+        socketRef.current = io(SOCKET_URL);
+
+        // Actualización general (cuando alguien crea/borra ticket o cambia estado)
+        socketRef.current.on('tickets_updated', () => {
+            fetchTickets(false); // false = no mostrar toast de error si falla silenciosamente
+        });
+
+        // Actualización específica de un ticket (comentarios en tiempo real)
+        socketRef.current.on('ticket_updated', (updatedTicket) => {
+            // Si tenemos el modal abierto con ese ticket, actualizarlo
+            setSelectedTicket(prev => (prev && prev._id === updatedTicket._id ? updatedTicket : prev));
+        });
+
+        return () => {
+            if (socketRef.current) socketRef.current.disconnect();
+        };
+    }, []);
+
+    // Unirse/Salir del room del ticket al abrir/cerrar modal
+    useEffect(() => {
+        if (selectedTicket) {
+            socketRef.current.emit('join_ticket', selectedTicket._id);
+        } else {
+            // Opcional: Salir de rooms previos si fuera necesario, pero join maneja cambio
+        }
+    }, [selectedTicket]);
+
 
     useEffect(() => {
         fetchTickets();
     }, []);
 
-    const fetchTickets = async () => {
+    const fetchTickets = async (showError = true) => {
         try {
             const res = await fetch(API_URL, {
                 headers: { 'Authorization': `Bearer ${user.token}` }
@@ -31,7 +64,7 @@ function Dashboard() {
             }
         } catch (error) {
             console.error("Error fetching tickets:", error);
-            toast.error("Error al cargar tickets");
+            if (showError) toast.error("Error al cargar tickets");
         }
     };
 
@@ -53,7 +86,7 @@ function Dashboard() {
             });
             if (res.ok) {
                 setFormData({ subject: '', description: '' });
-                fetchTickets();
+                // fetchTickets(); // Socket se encargará de esto
                 toast.success("Ticket creado exitosamente");
             }
         } catch (error) {
@@ -75,11 +108,19 @@ function Dashboard() {
     };
 
     const closeTicket = () => {
+        if (selectedTicket) {
+            socketRef.current.emit('leave_ticket', selectedTicket._id);
+        }
         setSelectedTicket(null);
     };
 
     const handleStatusChange = async (newStatus) => {
         await updateTicketStatus(selectedTicket._id, newStatus);
+    };
+
+    // Para el Kanban (recibe ID directamente)
+    const handleKanbanStatusChange = async (ticketId, newStatus) => {
+        await updateTicketStatus(ticketId, newStatus);
     };
 
     const updateTicketStatus = async (ticketId, status) => {
@@ -93,11 +134,7 @@ function Dashboard() {
                 body: JSON.stringify({ status })
             });
             if (res.ok) {
-                const updatedTicket = await res.json();
-                if (selectedTicket && selectedTicket._id === ticketId) {
-                    setSelectedTicket(updatedTicket);
-                }
-                fetchTickets();
+                // Socket actualizará la UI
                 toast.success(`Estado actualizado a ${status}`);
             }
         } catch (error) {
@@ -115,7 +152,7 @@ function Dashboard() {
             });
             if (res.ok) {
                 closeTicket();
-                fetchTickets();
+                // Socket actualiza lista
                 toast.success("Ticket eliminado");
             }
         } catch (error) {
@@ -138,10 +175,9 @@ function Dashboard() {
                 body: JSON.stringify({ texto: commentText })
             });
             if (res.ok) {
-                const updatedTicket = await res.json();
-                setSelectedTicket(updatedTicket);
+                // Socket actualizará el modal
                 setCommentText('');
-                toast.success("Comentario agregado");
+                // toast.success("Comentario agregado"); // WebSocket es tan rápido que el toast sobra a veces
             }
         } catch (error) {
             console.error("Error adding comment:", error);
@@ -245,7 +281,7 @@ function Dashboard() {
                         {viewMode === 'board' && isAdmin ? (
                             <KanbanBoard
                                 tickets={tickets}
-                                onStatusChange={updateTicketStatus}
+                                onStatusChange={handleKanbanStatusChange}
                                 onTicketClick={openTicket}
                             />
                         ) : (
