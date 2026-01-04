@@ -80,6 +80,52 @@ app.post('/api/tickets', protect, async (req, res) => {
   }
 });
 
+// Update Status (Admin only)
+app.put('/api/tickets/:id/status', protect, admin, async (req, res) => {
+  try {
+    const { status } = req.body;
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: 'Ticket no encontrado' });
+
+    ticket.status = status;
+    await ticket.save();
+    res.json(ticket);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Delete Ticket (Admin only)
+app.delete('/api/tickets/:id', protect, admin, async (req, res) => {
+  try {
+    await Ticket.findByIdAndDelete(req.params.id);
+    res.json({ message: 'Ticket eliminado' });
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Add Comment
+app.post('/api/tickets/:id/comments', protect, async (req, res) => {
+  try {
+    const { texto } = req.body;
+    const ticket = await Ticket.findById(req.params.id);
+    if (!ticket) return res.status(404).json({ message: 'Ticket no encontrado' });
+
+    const newComment = {
+      usuario: req.user.name,
+      texto,
+      esAdmin: req.user.role === 'admin'
+    };
+
+    ticket.comments.push(newComment);
+    await ticket.save();
+    res.json(ticket);
+  } catch (error) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 if (process.env.NODE_ENV === 'production') {
   app.use(express.static(path.join(__dirname, 'client/dist')));
   app.get('*', (req, res) => {
